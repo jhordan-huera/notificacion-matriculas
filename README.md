@@ -6,7 +6,7 @@ Te avisa en el celular cuando se habilita la carrera de **Software (FICA)** en l
 ## Cómo funciona
 
 La pantalla de login de la matrícula muestra públicamente la tabla **"Carreras Habilitadas
-Actualmente"**. `monitor.py` la lee completa cada 15 minutos desde GitHub Actions, sin usar
+Actualmente"**. `monitor.py` la lee completa cada 5 minutos desde GitHub Actions, sin usar
 tu usuario ni contraseña. Luego la compara con el último estado guardado en `estado.json` y te
 avisa por [ntfy](https://ntfy.sh) cuando:
 
@@ -57,7 +57,7 @@ gh workflow run monitor.yml
 ```
 
 O en GitHub: **Actions → Monitor de matrículas → Run workflow**. En un par de minutos debe
-llegarte "✅ Monitor de matrículas activado". Desde ahí corre solo cada 15 minutos.
+llegarte "✅ Monitor de matrículas activado". Desde ahí corre solo cada 5 minutos.
 
 ## Probar en tu computadora
 
@@ -84,8 +84,8 @@ Para volver a recibir el mensaje de bienvenida, borra `estado.json` del reposito
 
 ## Limitaciones
 
-- GitHub puede retrasar las ejecuciones programadas unos minutos en horas pico, así que el aviso
-  puede llegar entre 15 y 30 minutos después de que se habilite la carrera.
+- GitHub puede retrasar o saltarse ejecuciones programadas en horas pico, así que el aviso suele
+  llegar entre 5 y 15 minutos después de que se habilite la carrera, y a veces más.
 - Si la UTN cambia la página o bloquea conexiones desde los servidores de GitHub (están fuera de
   Ecuador), te llegará el aviso ⚠️. En ese caso, el script puede correr con cron en tu propia
   computadora.
