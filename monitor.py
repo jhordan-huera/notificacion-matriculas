@@ -207,6 +207,13 @@ def _lista(carreras: Iterable[Carrera]) -> str:
     return "\n".join(c.describir() for c in sorted(carreras))
 
 
+def listar_por_facultad(carreras: list[Carrera]) -> str:
+    grupos: dict[str, list[Carrera]] = {}
+    for carrera in sorted(carreras):
+        grupos.setdefault(carrera.facultad, []).append(carrera)
+    return "\n\n".join(f"{facultad} ({len(lista)})\n{_lista(lista)}" for facultad, lista in grupos.items())
+
+
 def _aviso_apertura(nombre: str, carreras: set[Carrera], url: str) -> Mensaje:
     return Mensaje(
         f"🎉 ¡{nombre} ya está habilitada!",
@@ -361,9 +368,23 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="muestra lo que notificaría, sin enviar nada ni guardar el estado",
     )
+    parser.add_argument(
+        "--listar",
+        action="store_true",
+        help="muestra las carreras habilitadas agrupadas por facultad y termina",
+    )
     args = parser.parse_args(argv)
 
     url = os.environ.get("URL_MATRICULA") or URL_MATRICULA
+    if args.listar:
+        try:
+            carreras = obtener_carreras(url)
+        except (requests.RequestException, ErrorPagina) as error:
+            print(f"No se pudo leer la página: {error}", file=sys.stderr)
+            return 1
+        print(f"{len(carreras)} carreras habilitadas\n\n{listar_por_facultad(carreras) or 'Ninguna por ahora.'}")
+        return 0
+
     facultad = os.environ.get("FACULTAD") or "FICA"
     carrera = os.environ.get("CARRERA") or "Software"
     ruta_estado = Path(os.environ.get("ARCHIVO_ESTADO") or "estado.json")

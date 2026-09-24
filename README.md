@@ -64,6 +64,7 @@ llegarte "✅ Monitor de matrículas activado". Desde ahí corre solo cada 5 min
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 
+.venv/bin/python monitor.py --listar      # carreras habilitadas ahora, agrupadas por facultad
 .venv/bin/python monitor.py --dry-run     # muestra qué avisaría, sin enviar ni guardar nada
 .venv/bin/python -m unittest discover -s tests -t .
 

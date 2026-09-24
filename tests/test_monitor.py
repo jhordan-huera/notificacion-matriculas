@@ -176,6 +176,14 @@ class EvaluarTest(unittest.TestCase):
         self.assertEqual(estado["semana_resumen"], "2026-W40")
 
 
+class ListarTest(unittest.TestCase):
+    def test_agrupa_por_facultad(self):
+        texto = monitor.listar_por_facultad(CARRERAS_ACTUALES + [SOFTWARE])
+        grupos = texto.split("\n\n")
+        self.assertEqual([g.splitlines()[0] for g in grupos], ["FACAE (13)", "FICA (1)", "FICAYA (7)"])
+        self.assertIn("• Software (Rediseño) — Presencial, estado A", grupos[1])
+
+
 class FallosTest(unittest.TestCase):
     def test_avisa_una_vez_tras_varios_fallos_y_luego_la_recuperacion(self):
         estado = {"objetivo": [], "facultad": [], "semana_resumen": "2026-W39"}
@@ -240,6 +248,12 @@ class MainTest(unittest.TestCase):
             post.return_value.ok = True
             self.assertEqual(monitor.main([]), 0)
             self.assertTrue(self.ruta_estado.exists())
+
+    def test_listar_no_necesita_topic_ni_envia_nada(self):
+        with mock.patch.dict(os.environ, {"NTFY_TOPIC": ""}), mock.patch.object(monitor.requests, "post") as post:
+            self.assertEqual(monitor.main(["--listar"]), 0)
+        post.assert_not_called()
+        self.assertFalse(self.ruta_estado.exists())
 
     def test_dry_run_no_envia_ni_guarda(self):
         with mock.patch.object(monitor.requests, "post") as post:
