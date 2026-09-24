@@ -2,9 +2,7 @@ name: Monitor de matrículas
 
 on:
   schedule:
-    # Cada 5 minutos (el mínimo de GitHub), en los minutos 2, 7, 12…: así se evita el
-    # inicio de cada hora, cuando GitHub más retrasa o se salta ejecuciones programadas.
-    - cron: "2-59/5 * * * *"
+    - cron: "*/5 * * * *" # cada 5 minutos, el mínimo de GitHub (puede retrasarse en horas pico)
   workflow_dispatch:
 
 permissions:
