@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Matrículas UTN</title>
+  <meta name="description" content="Carreras habilitadas en la Matrícula En Línea de la UTN, revisadas cada minuto.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎓</text></svg>">
+  <style>
+    :root {
+      --bg: #f5f6f8;
+      --surface: #ffffff;
+      --text: #16181c;
+      --muted: #5f6873;
+      --border: #e2e5ea;
+      --accent: #1f6feb;
+      --ok: #1a7f37;
+      --ok-bg: #e7f5ec;
+      --wait: #8a5a00;
+      --wait-bg: #fff5e0;
+      --bad: #c62828;
+      --highlight: #fff8c5;
+      color-scheme: light;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0e1014;
+        --surface: #171a20;
+        --text: #e7e9ec;
+        --muted: #9aa3ad;
+        --border: #2a2f37;
+        --accent: #58a6ff;
+        --ok: #3fb950;
+        --ok-bg: #11271a;
+        --wait: #e3b341;
+        --wait-bg: #2b2310;
+        --bad: #f47067;
+        --highlight: #3a3212;
+        color-scheme: dark;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    }
+    main { max-width: 760px; margin: 0 auto; padding: 24px 16px 48px; }
+    .etiqueta { margin: 0; color: var(--muted); font-size: 13px; letter-spacing: .06em; text-transform: uppercase; }
+    h1 { margin: 4px 0 20px; font-size: 26px; line-height: 1.25; }
+    h2 { margin: 36px 0 12px; font-size: 18px; }
+    .tarjeta { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 20px; }
+    .estado { display: flex; flex-direction: column; gap: 14px; }
+    .estado[data-abierta="true"] { background: var(--ok-bg); border-color: var(--ok); }
+    .estado[data-abierta="false"] { background: var(--wait-bg); border-color: transparent; }
+    .estado-respuesta { margin: 0; font-size: 30px; font-weight: 700; line-height: 1.2; }
+    .estado[data-abierta="true"] .estado-respuesta { color: var(--ok); }
+    .estado[data-abierta="false"] .estado-respuesta { color: var(--wait); }
+    .estado-detalle { margin: 0; color: var(--muted); }
+    .boton {
+      align-self: flex-start;
+      display: inline-block;
+      padding: 10px 16px;
+      border-radius: 10px;
+      background: var(--accent);
+      color: #fff;
+      font-weight: 600;
+      text-decoration: none;
+    }
+    .datos { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-top: 12px; }
+    .dato { padding: 14px 16px; }
+    .dato-valor { display: block; font-size: 20px; font-weight: 650; }
+    .dato-nombre { color: var(--muted); font-size: 14px; }
+    .punto { display: inline-block; width: 10px; height: 10px; margin-right: 8px; border-radius: 50%; background: var(--muted); }
+    .punto[data-ok="true"] { background: var(--ok); }
+    .punto[data-ok="false"] { background: var(--bad); }
+    .facultades { display: grid; gap: 12px; }
+    .facultad { padding: 16px 20px; }
+    .facultad[data-vigilada="true"] { border-color: var(--accent); }
+    .facultad h3 { display: flex; justify-content: space-between; margin: 0 0 8px; font-size: 16px; }
+    .facultad h3 span { color: var(--muted); font-weight: 500; }
+    ul { margin: 0; padding: 0; list-style: none; }
+    .facultad li { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-top: 1px solid var(--border); }
+    .facultad li:first-child { border-top: 0; }
+    .facultad li[data-objetivo="true"] { margin: 0 -8px; padding: 6px 8px; border-radius: 8px; background: var(--highlight); font-weight: 600; }
+    .modalidad { color: var(--muted); font-size: 14px; white-space: nowrap; }
+    .dia { margin: 20px 0 8px; color: var(--muted); font-size: 14px; font-weight: 600; }
+    .evento { display: grid; grid-template-columns: 52px 1fr; gap: 12px; padding: 10px 16px; border-top: 1px solid var(--border); }
+    .evento:first-child { border-top: 0; }
+    .evento time { color: var(--muted); font-variant-numeric: tabular-nums; }
+    .evento small { display: block; color: var(--muted); }
+    .historial { padding: 4px 0; }
+    .aviso { color: var(--muted); font-size: 14px; }
+    .error { color: var(--bad); }
+    footer { margin-top: 40px; color: var(--muted); font-size: 14px; }
+    footer a { color: inherit; }
+    @media (max-width: 480px) {
+      h1 { font-size: 22px; }
+      .estado-respuesta { font-size: 26px; }
+      .facultad li { flex-direction: column; gap: 0; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <p class="etiqueta">Matrícula En Línea UTN</p>
+    <h1 id="pregunta">¿Ya está habilitada la carrera?</h1>
+
+    <section class="tarjeta estado" id="estado" aria-live="polite">
+      <p class="estado-respuesta" id="respuesta">Cargando…</p>
+      <p class="estado-detalle" id="detalle"></p>
+      <a class="boton" id="enlace" href="#" target="_blank" rel="noopener">Ir a la matrícula</a>
+    </section>
+
+    <div class="datos">
+      <div class="tarjeta dato">
+        <span class="dato-valor"><span class="punto" id="punto"></span><span id="revision">—</span></span>
+        <span class="dato-nombre" id="revision-detalle">Última revisión</span>
+      </div>
+      <div class="tarjeta dato">
+        <span class="dato-valor" id="total">—</span>
+        <span class="dato-nombre" id="total-detalle">Carreras habilitadas</span>
+      </div>
+    </div>
+
+    <h2>Carreras habilitadas por facultad</h2>
+    <div class="facultades" id="facultades"><p class="aviso">Cargando…</p></div>
+
+    <h2>Historial de aperturas</h2>
+    <div id="historial"><p class="aviso">Cargando…</p></div>
+
+    <footer>
+      <p>Revisado automáticamente cada minuto. Los datos de esta página pueden tardar unos minutos en actualizarse; la fuente oficial es siempre la <a id="enlace-pie" href="#" target="_blank" rel="noopener">página de matrícula</a>.</p>
+      <p><a id="repositorio" href="#" target="_blank" rel="noopener">Código en GitHub</a></p>
+    </footer>
+    <noscript><p class="error">Esta página necesita JavaScript para mostrar los datos.</p></noscript>
+  </main>
+
+  <script>
+    // Carrera vigilada: igual que las variables FACULTAD y CARRERA del monitor.
+    const FACULTAD = "FICA";
+    const CARRERA = "Software";
+    const URL_MATRICULA = "https://cloud3.utn.edu.ec/ords/r/producci_n/jhsc42xld3flutexoqzq025366/y4eipevfjtvooejhnoyt026136";
+    const REFRESCO_MS = 2 * 60 * 1000; // la API de GitHub permite 60 consultas por hora sin sesión
+
+    // En GitHub Pages la dirección es <usuario>.github.io/<repositorio>/.
+    const enPages = location.hostname.endsWith(".github.io");
+    const USUARIO = enPages ? location.hostname.split(".")[0] : "jhordan-huera";
+    const REPOSITORIO = enPages ? location.pathname.split("/")[1] : "notificacion-matriculas";
+    const RAW = `https://raw.githubusercontent.com/${USUARIO}/${REPOSITORIO}/main`;
+    const API = `https://api.github.com/repos/${USUARIO}/${REPOSITORIO}/actions/workflows/monitor.yml/runs?per_page=1&status=completed`;
+
+    const $ = (id) => document.getElementById(id);
+    const normalizar = (texto) =>
+      texto.normalize("NFKD").replace(/\p{M}/gu, "").toLowerCase().replace(/\s+/g, " ").trim();
+    const esObjetivo = (facultad, carrera) =>
+      normalizar(facultad) === normalizar(FACULTAD) && normalizar(carrera).includes(normalizar(CARRERA));
+    const elemento = (etiqueta, texto, atributos = {}) => {
+      const nodo = document.createElement(etiqueta);
+      if (texto !== undefined) nodo.textContent = texto;
+      for (const [clave, valor] of Object.entries(atributos)) nodo.setAttribute(clave, valor);
+      return nodo;
+    };
+
+    function leerCsv(texto) {
+      const filas = [];
+      let fila = [], campo = "", entreComillas = false;
+      for (let i = 0; i < texto.length; i++) {
+        const c = texto[i];
+        if (entreComillas) {
+          if (c === '"' && texto[i + 1] === '"') { campo += '"'; i++; }
+          else if (c === '"') entreComillas = false;
+          else campo += c;
+        } else if (c === '"') entreComillas = true;
+        else if (c === ",") { fila.push(campo); campo = ""; }
+        else if (c === "\n" || c === "\r") {
+          if (c === "\r" && texto[i + 1] === "\n") i++;
+          fila.push(campo); filas.push(fila); fila = []; campo = "";
+        } else campo += c;
+      }
+      if (campo || fila.length) { fila.push(campo); filas.push(fila); }
+      const [encabezado, ...datos] = filas.filter((f) => f.some(Boolean));
+      return datos.map((f) => Object.fromEntries(encabezado.map((nombre, i) => [nombre, f[i] ?? ""])));
+    }
+
+    async function descargar(ruta) {
+      const respuesta = await fetch(`${RAW}/${ruta}?t=${Date.now()}`, { cache: "no-store" });
+      if (!respuesta.ok) throw new Error(`${ruta}: ${respuesta.status}`);
+      return respuesta.text();
+    }
+
+    function hace(fecha) {
+      const minutos = Math.round((Date.now() - fecha.getTime()) / 60000);
+      if (minutos < 1) return "hace un momento";
+      if (minutos < 60) return `hace ${minutos} min`;
+      const horas = Math.floor(minutos / 60);
+      return horas < 24 ? `hace ${horas} h ${minutos % 60} min` : `hace ${Math.floor(horas / 24)} días`;
+    }
+
+    function mostrarEstado(habilitadas, historial) {
+      const objetivo = habilitadas.filter(([facultad, carrera]) => esObjetivo(facultad, carrera));
+      const abierta = objetivo.length > 0;
+      $("pregunta").textContent = `¿Ya está habilitada ${CARRERA} (${FACULTAD})?`;
+      $("estado").dataset.abierta = abierta;
+      $("respuesta").textContent = abierta ? "¡Sí, ya está habilitada! 🎉" : "Todavía no";
+      if (abierta) {
+        const apertura = historial.find((f) => f.evento === "habilitada" && esObjetivo(f.facultad, f.carrera));
+        const desde = apertura ? ` Detectada el ${apertura.detectado}.` : "";
+        $("detalle").textContent = objetivo.map(([, carrera, modalidad]) => `${carrera} · ${modalidad}`).join(", ") + "." + desde;
+      } else {
+        const deFacultad = habilitadas.filter(([facultad]) => normalizar(facultad) === normalizar(FACULTAD)).length;
+        $("detalle").textContent = deFacultad
+          ? `${FACULTAD} ya tiene ${deFacultad} ${deFacultad === 1 ? "carrera habilitada" : "carreras habilitadas"}, pero ${CARRERA} aún no aparece.`
+          : `${FACULTAD} todavía no tiene carreras habilitadas.`;
+      }
+      const facultades = new Set(habilitadas.map(([facultad]) => facultad));
+      $("total").textContent = habilitadas.length;
+      $("total-detalle").textContent = `Carreras habilitadas en ${facultades.size} ${facultades.size === 1 ? "facultad" : "facultades"}`;
+    }
+
+    function mostrarFacultades(habilitadas) {
+      const grupos = new Map();
+      for (const fila of [...habilitadas].sort((a, b) => a[0].localeCompare(b[0]) || a[1].localeCompare(b[1], "es"))) {
+        if (!grupos.has(fila[0])) grupos.set(fila[0], []);
+        grupos.get(fila[0]).push(fila);
+      }
+      const contenedor = $("facultades");
+      contenedor.replaceChildren();
+      if (!grupos.size) contenedor.append(elemento("p", "Por ahora no hay carreras habilitadas.", { class: "aviso" }));
+      for (const [facultad, filas] of grupos) {
+        const tarjeta = elemento("section", undefined, {
+          class: "tarjeta facultad",
+          "data-vigilada": normalizar(facultad) === normalizar(FACULTAD),
+        });
+        const titulo = elemento("h3", facultad);
+        titulo.append(elemento("span", filas.length));
+        const lista = elemento("ul");
+        for (const [, carrera, modalidad] of filas) {
+          const item = elemento("li", undefined, { "data-objetivo": esObjetivo(facultad, carrera) });
+          item.append(elemento("span", carrera), elemento("span", modalidad, { class: "modalidad" }));
+          lista.append(item);
+        }
+        tarjeta.append(titulo, lista);
+        contenedor.append(tarjeta);
+      }
+    }
+
+    function mostrarHistorial(historial) {
+      const contenedor = $("historial");
+      contenedor.replaceChildren();
+      const iniciales = historial.filter((f) => f.evento === "ya habilitada");
+      const eventos = historial.filter((f) => f.evento !== "ya habilitada").reverse();
+      const formatoDia = new Intl.DateTimeFormat("es-EC", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" });
+      let diaActual = null, tarjeta = null;
+      for (const fila of eventos) {
+        const [fecha, hora] = fila.detectado.split(" ");
+        if (fecha !== diaActual) {
+          diaActual = fecha;
+          const [a, m, d] = fecha.split("-").map(Number);
+          const dia = formatoDia.format(new Date(Date.UTC(a, m - 1, d)));
+          contenedor.append(elemento("p", dia[0].toUpperCase() + dia.slice(1), { class: "dia" }));
+          tarjeta = elemento("div", undefined, { class: "tarjeta historial" });
+          contenedor.append(tarjeta);
+        }
+        const retirada = fila.evento === "retirada";
+        const item = elemento("div", undefined, { class: "evento" });
+        const texto = elemento("div", `${retirada ? "Se retiró: " : ""}${fila.carrera}`);
+        texto.append(elemento("small", `${fila.facultad} · ${fila.modalidad}`));
+        item.append(elemento("time", hora), texto);
+        tarjeta.append(item);
+      }
+      if (iniciales.length) {
+        const fecha = iniciales[0].detectado;
+        contenedor.append(elemento("p", `Al iniciar el monitor (${fecha}) ya había ${iniciales.length} carreras habilitadas.`, { class: "aviso" }));
+      }
+      if (!historial.length) contenedor.append(elemento("p", "Aún no hay cambios registrados.", { class: "aviso" }));
+    }
+
+    async function mostrarUltimaRevision() {
+      try {
+        const respuesta = await fetch(API, { headers: { Accept: "application/vnd.github+json" } });
+        if (!respuesta.ok) throw new Error(respuesta.status);
+        const [ejecucion] = (await respuesta.json()).workflow_runs;
+        if (!ejecucion) throw new Error("sin ejecuciones");
+        const fecha = new Date(ejecucion.updated_at);
+        const ok = ejecucion.conclusion === "success";
+        $("punto").dataset.ok = ok;
+        $("revision").textContent = hace(fecha);
+        const hora = fecha.toLocaleTimeString("es-EC", { timeZone: "America/Guayaquil", hour: "2-digit", minute: "2-digit" });
+        $("revision-detalle").textContent = `Última revisión (${hora}, ${ok ? "sin errores" : "con errores"})`;
+      } catch {
+        $("revision").textContent = "No disponible";
+        $("revision-detalle").textContent = "Última revisión (no se pudo consultar GitHub)";
+      }
+    }
+
+    async function actualizar() {
+      try {
+        const [estado, csv] = await Promise.all([descargar("estado.json").then(JSON.parse), descargar("historial.csv")]);
+        const habilitadas = estado.habilitadas ?? [];
+        const historial = leerCsv(csv);
+        mostrarEstado(habilitadas, historial);
+        mostrarFacultades(habilitadas);
+        mostrarHistorial(historial);
+      } catch (error) {
+        $("respuesta").textContent = "No se pudieron cargar los datos";
+        $("detalle").textContent = "Revisa directamente la página de matrícula.";
+        $("detalle").classList.add("error");
+      }
+      mostrarUltimaRevision();
+    }
+
+    for (const id of ["enlace", "enlace-pie"]) $(id).href = URL_MATRICULA;
+    $("repositorio").href = `https://github.com/${USUARIO}/${REPOSITORIO}`;
+    actualizar();
+    setInterval(actualizar, REFRESCO_MS);
+  </script>
+</body>
+</html>

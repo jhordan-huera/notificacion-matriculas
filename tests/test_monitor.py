@@ -1,3 +1,4 @@
+import json
 import os
 import tempfile
 import unittest
@@ -274,20 +275,113 @@ class NotificacionesTest(unittest.TestCase):
                 monitor.enviar_ntfy(Mensaje("T", "X"), "https://ntfy.sh", "mi-topic", URL)
 
 
+def respuesta_ntfy(*mensajes: Mensaje) -> mock.Mock:
+    """Respuesta de ntfy a una consulta de avisos recientes (una línea JSON por evento)."""
+    lineas = ['{"event":"open","topic":"mi-topic"}']
+    lineas += [json.dumps({"event": "message", "title": m.titulo, "message": m.texto}) for m in mensajes]
+    respuesta = mock.Mock(text="\n".join(lineas))
+    respuesta.raise_for_status.return_value = None
+    return respuesta
+
+
+class DuplicadosTest(unittest.TestCase):
+    APERTURA = Mensaje("🎉 ¡Software (FICA) ya está habilitada!", "Ya aparece…", 5)
+    CAMBIOS = Mensaje("📋 Nuevas carreras habilitadas: FECYT", "Nuevas:\nFECYT (1)")
+
+    def notificar(self, respuesta_get):
+        with mock.patch.object(monitor.requests, "get", **respuesta_get) as get, mock.patch.object(
+            monitor.requests, "post"
+        ) as post:
+            post.return_value.ok = True
+            resultado = monitor.notificar([self.APERTURA, self.CAMBIOS], "https://ntfy.sh", "mi-topic", URL)
+        return resultado, get, post
+
+    def test_no_repite_lo_que_otro_monitor_acaba_de_enviar(self):
+        resultado, get, post = self.notificar({"return_value": respuesta_ntfy(self.APERTURA)})
+        self.assertTrue(resultado)
+        self.assertEqual(get.call_args.kwargs["params"], {"poll": "1", "since": "10m"})
+        self.assertEqual([c.kwargs["json"]["title"] for c in post.call_args_list], [self.CAMBIOS.titulo])
+
+    def test_un_aviso_distinto_con_el_mismo_titulo_si_se_envia(self):
+        otro = Mensaje(self.APERTURA.titulo, "otro texto")
+        _, _, post = self.notificar({"return_value": respuesta_ntfy(otro)})
+        self.assertEqual(post.call_count, 2)
+
+    def test_si_no_se_puede_consultar_ntfy_se_envia_igual(self):
+        resultado, _, post = self.notificar({"side_effect": requests.ConnectionError("sin red")})
+        self.assertTrue(resultado)
+        self.assertEqual(post.call_count, 2)
+
+    def test_sin_mensajes_no_consulta_ntfy(self):
+        with mock.patch.object(monitor.requests, "get") as get:
+            self.assertTrue(monitor.notificar([], "https://ntfy.sh", "mi-topic", URL))
+        get.assert_not_called()
+
+
+class HistorialTest(unittest.TestCase):
+    def test_primera_lectura_registra_lo_que_ya_estaba_habilitado(self):
+        nuevo, _ = monitor.evaluar({}, CARRERAS_ACTUALES, "FICA", "Software", JUEVES, URL)
+        filas = monitor.cambios_historial({}, nuevo, JUEVES)
+        self.assertEqual(len(filas), 20)
+        self.assertEqual(
+            filas[0],
+            {
+                "detectado": "2026-09-24 10:00",
+                "evento": "ya habilitada",
+                "facultad": "FACAE",
+                "carrera": "Administración de Empresas (Rediseño)",
+                "modalidad": "Presencial",
+            },
+        )
+
+    def test_registra_aperturas_y_retiros(self):
+        antes, _ = monitor.evaluar({}, CARRERAS_ACTUALES, "FICA", "Software", JUEVES, URL)
+        retirada = CARRERAS_ACTUALES[0]
+        despues, _ = monitor.evaluar(antes, CARRERAS_ACTUALES[1:] + [SOFTWARE], "FICA", "Software", JUEVES, URL)
+        filas = monitor.cambios_historial(antes, despues, JUEVES)
+        self.assertEqual(
+            [(f["evento"], f["carrera"]) for f in filas],
+            [("retirada", retirada.carrera), ("habilitada", SOFTWARE.carrera)],
+        )
+
+    def test_una_revision_fallida_no_agrega_filas(self):
+        antes, _ = monitor.evaluar({}, CARRERAS_ACTUALES, "FICA", "Software", JUEVES, URL)
+        despues, _ = monitor.registrar_fallo(antes, "Timeout", URL)
+        self.assertEqual(monitor.cambios_historial(antes, despues, JUEVES), [])
+        self.assertEqual(monitor.cambios_historial({}, monitor.registrar_fallo({}, "Timeout", URL)[0], JUEVES), [])
+
+    def test_escribe_el_encabezado_una_sola_vez(self):
+        with tempfile.TemporaryDirectory() as directorio:
+            ruta = Path(directorio) / "historial.csv"
+            fila = {"detectado": "2026-09-24 15:35", "evento": "habilitada", "facultad": "FICA",
+                    "carrera": "Electricidad", "modalidad": "Presencial"}
+            monitor.guardar_historial(ruta, [fila])
+            monitor.guardar_historial(ruta, [])
+            monitor.guardar_historial(ruta, [fila])
+            self.assertEqual(
+                ruta.read_text(encoding="utf-8").splitlines(),
+                ["detectado,evento,facultad,carrera,modalidad"]
+                + ["2026-09-24 15:35,habilitada,FICA,Electricidad,Presencial"] * 2,
+            )
+
+
 class MainTest(unittest.TestCase):
     def setUp(self):
         self.directorio = tempfile.TemporaryDirectory()
         self.addCleanup(self.directorio.cleanup)
         self.ruta_estado = Path(self.directorio.name) / "estado.json"
+        self.ruta_historial = Path(self.directorio.name) / "historial.csv"
         entorno = {"NTFY_TOPIC": "topic-de-prueba", "ARCHIVO_ESTADO": str(self.ruta_estado)}
         for variable in ("NTFY_SERVIDOR", "FACULTAD", "CARRERA", "URL_MATRICULA"):
             entorno[variable] = ""
-        parche = mock.patch.dict(os.environ, entorno)
-        parche.start()
-        self.addCleanup(parche.stop)
-        parche = mock.patch.object(monitor, "obtener_carreras", return_value=CARRERAS_ACTUALES)
-        parche.start()
-        self.addCleanup(parche.stop)
+        parches = [
+            mock.patch.dict(os.environ, entorno),
+            mock.patch.object(monitor, "obtener_carreras", return_value=CARRERAS_ACTUALES),
+            mock.patch.object(monitor.requests, "get", return_value=respuesta_ntfy()),
+        ]
+        for parche in parches:
+            parche.start()
+            self.addCleanup(parche.stop)
 
     def test_sin_topic_termina_con_error(self):
         with mock.patch.dict(os.environ, {"NTFY_TOPIC": ""}):
@@ -301,9 +395,13 @@ class MainTest(unittest.TestCase):
             self.assertEqual(monitor.main([]), 1)
             self.assertFalse(self.ruta_estado.exists())
 
+            self.assertFalse(self.ruta_historial.exists())
+
             post.return_value.ok = True
             self.assertEqual(monitor.main([]), 0)
             self.assertTrue(self.ruta_estado.exists())
+            # El historial va junto al archivo de estado, con una fila por carrera ya habilitada.
+            self.assertEqual(len(self.ruta_historial.read_text(encoding="utf-8").splitlines()), 21)
 
     def test_listar_no_necesita_topic_ni_envia_nada(self):
         with mock.patch.dict(os.environ, {"NTFY_TOPIC": ""}), mock.patch.object(monitor.requests, "post") as post:

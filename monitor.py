@@ -4,12 +4,14 @@
 La pantalla de login del sistema de matrículas muestra públicamente la tabla
 "Carreras Habilitadas Actualmente" (un Interactive Report de Oracle APEX).
 Este script la lee completa, la compara con el último estado guardado y
-notifica los cambios al celular mediante ntfy (https://ntfy.sh).
+notifica los cambios al celular mediante ntfy (https://ntfy.sh). Cada cambio
+queda registrado en historial.csv, junto al archivo de estado.
 """
 
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import os
 import sys
@@ -36,6 +38,8 @@ UMBRAL_FALLOS = 3  # ejecuciones fallidas seguidas antes de avisar que algo anda
 MAX_PAGINAS = 20
 HORA_RESUMEN = 9  # el resumen semanal se envía a partir de esta hora (Ecuador)
 LIMITE_NTFY = 4000  # bytes; ntfy no muestra como texto los mensajes de más de 4096
+VENTANA_DUPLICADOS = "10m"  # un aviso idéntico enviado en este lapso no se repite
+CAMPOS_HISTORIAL = ("detectado", "evento", "facultad", "carrera", "modalidad")
 
 
 class ErrorPagina(Exception):
@@ -348,17 +352,20 @@ def registrar_fallo(estado: dict, error: str, url: str) -> tuple[dict, list[Mens
 # --- Notificaciones -------------------------------------------------------
 
 
+def _texto_ntfy(mensaje: Mensaje) -> str:
+    if len(mensaje.texto.encode()) <= LIMITE_NTFY:
+        return mensaje.texto
+    return mensaje.texto.encode()[: LIMITE_NTFY - 10].decode(errors="ignore") + "\n…"
+
+
 def enviar_ntfy(mensaje: Mensaje, servidor: str, topic: str, enlace: str) -> None:
-    texto = mensaje.texto
-    if len(texto.encode()) > LIMITE_NTFY:
-        texto = texto.encode()[: LIMITE_NTFY - 10].decode(errors="ignore") + "\n…"
     try:
         respuesta = requests.post(
             servidor.rstrip("/") + "/",
             json={
                 "topic": topic,
                 "title": mensaje.titulo,
-                "message": texto,
+                "message": _texto_ntfy(mensaje),
                 "priority": mensaje.prioridad,
                 "click": enlace,
             },
@@ -370,9 +377,40 @@ def enviar_ntfy(mensaje: Mensaje, servidor: str, topic: str, enlace: str) -> Non
         raise ErrorNotificacion(f"ntfy respondió {respuesta.status_code}: {respuesta.text[:200]}")
 
 
+def publicados_recientes(servidor: str, topic: str) -> set[tuple[str, str]]:
+    """Avisos que llegaron al canal hace poco, quizá enviados por otro monitor (GitHub o la Mac)."""
+    try:
+        respuesta = requests.get(
+            f"{servidor.rstrip('/')}/{topic}/json",
+            params={"poll": "1", "since": VENTANA_DUPLICADOS},
+            timeout=TIMEOUT,
+        )
+        respuesta.raise_for_status()
+    except requests.RequestException as error:
+        # Ante la duda se envía: un aviso repetido es mejor que uno perdido.
+        print(f"No se pudieron consultar los avisos recientes ({type(error).__name__}); se enviará igual", file=sys.stderr)
+        return set()
+    recientes = set()
+    for linea in respuesta.text.splitlines():
+        try:
+            evento = json.loads(linea)
+        except ValueError:
+            continue
+        if isinstance(evento, dict) and evento.get("event") == "message":
+            recientes.add((evento.get("title", ""), evento.get("message", "")))
+    return recientes
+
+
 def notificar(mensajes: list[Mensaje], servidor: str, topic: str, enlace: str) -> bool:
-    """Envía los mensajes en orden. Devuelve False si alguno no se pudo entregar."""
+    """Envía los mensajes en orden, salvo los que otro monitor acaba de enviar.
+
+    Devuelve False si alguno no se pudo entregar.
+    """
+    recientes = publicados_recientes(servidor, topic) if mensajes else set()
     for mensaje in mensajes:
+        if (mensaje.titulo, _texto_ntfy(mensaje)) in recientes:
+            print(f"Omitido, otro monitor ya lo envió: {mensaje.titulo}")
+            continue
         try:
             enviar_ntfy(mensaje, servidor, topic, enlace)
         except ErrorNotificacion as error:
@@ -390,6 +428,34 @@ def cargar_estado(ruta: Path) -> dict:
 
 def guardar_estado(ruta: Path, estado: dict) -> None:
     ruta.write_text(json.dumps(estado, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def cambios_historial(estado: dict, nuevo_estado: dict, ahora: datetime) -> list[dict[str, str]]:
+    """Filas para el historial: qué carreras aparecieron o desaparecieron desde la revisión anterior."""
+    if "habilitadas" not in nuevo_estado:  # todavía no hubo una lectura exitosa
+        return []
+    actuales = _a_carreras(nuevo_estado["habilitadas"])
+    if "habilitadas" in estado:
+        antes = _a_carreras(estado["habilitadas"])
+        cambios = [("habilitada", c) for c in actuales - antes] + [("retirada", c) for c in antes - actuales]
+    else:
+        cambios = [("ya habilitada", c) for c in actuales]
+    detectado = ahora.strftime("%Y-%m-%d %H:%M")
+    return [
+        {"detectado": detectado, "evento": evento, "facultad": c.facultad, "carrera": c.carrera, "modalidad": c.modalidad}
+        for evento, c in sorted(cambios, key=lambda cambio: (cambio[1], cambio[0]))
+    ]
+
+
+def guardar_historial(ruta: Path, filas: list[dict[str, str]]) -> None:
+    if not filas:
+        return
+    nuevo = not ruta.exists() or ruta.stat().st_size == 0
+    with ruta.open("a", encoding="utf-8", newline="") as archivo:
+        escritor = csv.DictWriter(archivo, fieldnames=CAMPOS_HISTORIAL)
+        if nuevo:
+            escritor.writeheader()
+        escritor.writerows(filas)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -427,6 +493,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     estado = cargar_estado(ruta_estado)
+    ahora = datetime.now(ECUADOR)
     try:
         carreras = con_reintentos(lambda: obtener_carreras(url))
     except (requests.RequestException, ErrorPagina) as error:
@@ -434,7 +501,7 @@ def main(argv: list[str] | None = None) -> int:
         nuevo_estado, mensajes = registrar_fallo(estado, str(error), url)
     else:
         print(f"{len(carreras)} carreras habilitadas ({_resumen_facultades(carreras)})")
-        nuevo_estado, mensajes = evaluar(estado, carreras, facultad, carrera, datetime.now(ECUADOR), url)
+        nuevo_estado, mensajes = evaluar(estado, carreras, facultad, carrera, ahora, url)
 
     for mensaje in mensajes:
         print(f"\n[{'simulado' if args.dry_run else 'enviando'}] {mensaje.titulo}\n{mensaje.texto}")
@@ -447,6 +514,7 @@ def main(argv: list[str] | None = None) -> int:
         # No se guarda el estado, así el aviso se reintenta en la próxima ejecución.
         return 1
     if nuevo_estado != estado:
+        guardar_historial(ruta_estado.with_name("historial.csv"), cambios_historial(estado, nuevo_estado, ahora))
         guardar_estado(ruta_estado, nuevo_estado)
     return 0
 

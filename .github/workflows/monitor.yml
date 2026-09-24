@@ -3,10 +3,10 @@ name: Monitor de matrículas
 on:
   schedule:
     - cron: "*/5 * * * *" # cada 5 minutos, el mínimo de GitHub (puede retrasarse en horas pico)
-  workflow_dispatch:
+  workflow_dispatch: # cron-job.org lo dispara cada minuto por la API
 
 permissions:
-  contents: write # para guardar estado.json en el repositorio
+  contents: write # para guardar estado.json e historial.csv en el repositorio
 
 concurrency:
   group: monitor-matriculas
@@ -33,12 +33,25 @@ jobs:
           CARRERA: ${{ vars.CARRERA }}
         run: python monitor.py
 
-      - name: Guardar estado
+      - name: Guardar estado e historial
         run: |
-          if [ -n "$(git status --porcelain estado.json)" ]; then
+          for archivo in estado.json historial.csv; do
+            if [ -f "$archivo" ]; then git add "$archivo"; fi
+          done
+          if ! git diff --cached --quiet; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add estado.json
             git commit -m "Actualizar estado del monitor"
+            git pull --rebase --quiet # por si se subió otro commit mientras corría la revisión
             git push
           fi
+
+      # Señal de vida para healthchecks.io: si deja de llegar, avisa que el monitor se detuvo.
+      - name: Avisar a healthchecks.io
+        if: always()
+        env:
+          HEALTHCHECK_URL: ${{ secrets.HEALTHCHECK_URL }}
+          SUFIJO: ${{ job.status != 'success' && '/fail' || '' }}
+        run: |
+          if [ -z "$HEALTHCHECK_URL" ]; then exit 0; fi
+          curl -fsS -m 10 --retry 3 -o /dev/null "$HEALTHCHECK_URL$SUFIJO"
