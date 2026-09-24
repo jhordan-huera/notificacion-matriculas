@@ -35,6 +35,7 @@ TIMEOUT = 30
 UMBRAL_FALLOS = 3  # ejecuciones fallidas seguidas antes de avisar que algo anda mal
 MAX_PAGINAS = 20
 HORA_RESUMEN = 9  # el resumen semanal se envía a partir de esta hora (Ecuador)
+LIMITE_NTFY = 4000  # bytes; ntfy no muestra como texto los mensajes de más de 4096
 
 
 class ErrorPagina(Exception):
@@ -53,8 +54,9 @@ class Carrera:
     estado: str = ""
 
     def describir(self) -> str:
-        detalles = [d for d in (self.modalidad, self.estado and f"estado {self.estado}") if d]
-        return f"• {self.carrera}" + (f" — {', '.join(detalles)}" if detalles else "")
+        # Las carreras habilitadas tienen estado "A"; solo se muestra si es otro.
+        partes = [self.carrera, self.modalidad, self.estado not in ("", "A") and f"estado {self.estado}"]
+        return "• " + " · ".join(p for p in partes if p)
 
 
 @dataclass
@@ -207,11 +209,22 @@ def _lista(carreras: Iterable[Carrera]) -> str:
     return "\n".join(c.describir() for c in sorted(carreras))
 
 
-def listar_por_facultad(carreras: list[Carrera]) -> str:
+def listar_por_facultad(carreras: Iterable[Carrera]) -> str:
     grupos: dict[str, list[Carrera]] = {}
     for carrera in sorted(carreras):
         grupos.setdefault(carrera.facultad, []).append(carrera)
     return "\n\n".join(f"{facultad} ({len(lista)})\n{_lista(lista)}" for facultad, lista in grupos.items())
+
+
+def _con_habilitadas(texto: str, carreras: list[Carrera]) -> str:
+    """Agrega la lista completa por facultad, o solo el conteo si no cabe en la notificación."""
+    if not carreras:
+        detalle = "Por ahora no hay carreras habilitadas."
+    else:
+        detalle = f"Habilitadas ahora ({len(carreras)}):\n\n{listar_por_facultad(carreras)}"
+        if len(f"{texto}\n\n{detalle}".encode()) > LIMITE_NTFY:
+            detalle = f"Habilitadas ahora: {len(carreras)} ({_resumen_facultades(carreras)})"
+    return f"{texto}\n\n{detalle}" if texto else detalle
 
 
 def _aviso_apertura(nombre: str, carreras: set[Carrera], url: str) -> Mensaje:
@@ -220,6 +233,19 @@ def _aviso_apertura(nombre: str, carreras: set[Carrera], url: str) -> Mensaje:
         f"Ya aparece en las carreras habilitadas para matrícula:\n{_lista(carreras)}\n\nIngresa aquí: {url}",
         prioridad=5,
     )
+
+
+def _aviso_cambios(nuevas: set[Carrera], retiradas: set[Carrera], carreras: list[Carrera], facultad: str) -> Mensaje:
+    facultades = sorted({c.facultad for c in nuevas | retiradas})
+    partes = []
+    if nuevas:
+        partes.append(f"Nuevas:\n{listar_por_facultad(nuevas)}")
+    if retiradas:
+        partes.append(f"Ya no aparecen:\n{listar_por_facultad(retiradas)}")
+    titulo = "📋 Cambios en carreras habilitadas" if retiradas else "📋 Nuevas carreras habilitadas"
+    # Un cambio en la facultad vigilada suele anunciar la apertura: prioridad alta.
+    prioridad = 4 if any(normalizar(f) == normalizar(facultad) for f in facultades) else 3
+    return Mensaje(f"{titulo}: {', '.join(facultades)}", _con_habilitadas("\n\n".join(partes), carreras), prioridad)
 
 
 def evaluar(
@@ -231,10 +257,13 @@ def evaluar(
     url: str,
 ) -> tuple[dict, list[Mensaje]]:
     """Compara la lista actual con el estado anterior y decide qué notificar."""
-    de_facultad = {c for c in carreras if normalizar(c.facultad) == normalizar(facultad)}
-    objetivo = {c for c in de_facultad if normalizar(carrera) in normalizar(c.carrera)}
+    actuales = set(carreras)
+    objetivo = {
+        c
+        for c in actuales
+        if normalizar(c.facultad) == normalizar(facultad) and normalizar(carrera) in normalizar(c.carrera)
+    }
     nombre = f"{carrera} ({facultad})"
-    total = f"Hay {len(carreras)} carreras habilitadas ({_resumen_facultades(carreras)})."
     semana = ahora.strftime("%G-W%V")
     semana_resumen = estado.get("semana_resumen", semana)
     mensajes = []
@@ -249,19 +278,16 @@ def evaluar(
             mensajes.append(
                 Mensaje(
                     "✅ Monitor de matrículas activado",
-                    f"{nombre} aún no está habilitada. {total}\nTe avisaré apenas aparezca.",
+                    _con_habilitadas(f"{nombre} aún no está habilitada. Te avisaré apenas aparezca.", carreras),
                 )
             )
     else:
         antes_objetivo = _a_carreras(estado["objetivo"])
-        antes_facultad = _a_carreras(estado["facultad"])
-        nuevas = de_facultad - antes_facultad
-        retiradas = antes_facultad - de_facultad
-
-        if objetivo and not antes_objetivo:
+        abrio = bool(objetivo) and not antes_objetivo
+        cerro = bool(antes_objetivo) and not objetivo
+        if abrio:
             mensajes.append(_aviso_apertura(nombre, objetivo, url))
-            nuevas -= objetivo
-        elif antes_objetivo and not objetivo:
+        if cerro:
             mensajes.append(
                 Mensaje(
                     f"{nombre} ya no aparece",
@@ -269,28 +295,30 @@ def evaluar(
                     prioridad=4,
                 )
             )
-            retiradas -= antes_objetivo
 
-        if nuevas or retiradas:
-            partes = []
-            if nuevas:
-                partes.append(f"Nuevas:\n{_lista(nuevas)}")
-            if retiradas:
-                partes.append(f"Ya no aparecen:\n{_lista(retiradas)}")
-            mensajes.append(
-                Mensaje(f"Cambios en las carreras de {facultad}", "\n\n".join(partes) + f"\n\n{url}", prioridad=4)
-            )
+        if "habilitadas" in estado:
+            antes = _a_carreras(estado["habilitadas"])
+            # Lo que ya anunció el aviso de apertura o de cierre no se repite.
+            nuevas = actuales - antes - (objetivo if abrio else set())
+            retiradas = antes - actuales - (antes_objetivo if cerro else set())
+            if nuevas or retiradas:
+                mensajes.append(_aviso_cambios(nuevas, retiradas, carreras, facultad))
+        else:
+            # El estado viene de una versión anterior que no guardaba la lista completa.
+            mensajes.append(Mensaje("📋 Carreras habilitadas", _con_habilitadas("", carreras)))
 
         # Resumen semanal: confirma que el monitor sigue vivo (y su commit evita
         # que GitHub pause el cron de un repositorio público por inactividad).
         if semana != semana_resumen and ahora.hour >= HORA_RESUMEN:
             estado_objetivo = "ya está habilitada ✅" if objetivo else "aún no está habilitada"
-            mensajes.append(Mensaje("🔎 Sigo vigilando las matrículas", f"{nombre} {estado_objetivo}. {total}"))
+            mensajes.append(
+                Mensaje("🔎 Sigo vigilando las matrículas", _con_habilitadas(f"{nombre} {estado_objetivo}.", carreras))
+            )
             semana_resumen = semana
 
     nuevo_estado = {
         "objetivo": _a_filas(objetivo),
-        "facultad": _a_filas(de_facultad),
+        "habilitadas": _a_filas(actuales),
         "semana_resumen": semana_resumen,
         "fallos_consecutivos": 0,
         "alerta_error_enviada": False,
@@ -321,13 +349,16 @@ def registrar_fallo(estado: dict, error: str, url: str) -> tuple[dict, list[Mens
 
 
 def enviar_ntfy(mensaje: Mensaje, servidor: str, topic: str, enlace: str) -> None:
+    texto = mensaje.texto
+    if len(texto.encode()) > LIMITE_NTFY:
+        texto = texto.encode()[: LIMITE_NTFY - 10].decode(errors="ignore") + "\n…"
     try:
         respuesta = requests.post(
             servidor.rstrip("/") + "/",
             json={
                 "topic": topic,
                 "title": mensaje.titulo,
-                "message": mensaje.texto,
+                "message": texto,
                 "priority": mensaje.prioridad,
                 "click": enlace,
             },

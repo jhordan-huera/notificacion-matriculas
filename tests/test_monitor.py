@@ -120,8 +120,10 @@ class EvaluarTest(unittest.TestCase):
         estado, mensajes = self.evaluar({}, CARRERAS_ACTUALES)
         [mensaje] = mensajes
         self.assertIn("activado", mensaje.titulo)
-        self.assertIn("FACAE: 13, FICAYA: 7", mensaje.texto)
+        self.assertIn("Habilitadas ahora (20):\n\nFACAE (13)\n• Administración de Empresas", mensaje.texto)
+        self.assertIn("FICAYA (7)", mensaje.texto)
         self.assertEqual(estado["objetivo"], [])
+        self.assertEqual(len(estado["habilitadas"]), 20)
         self.assertEqual(estado["semana_resumen"], "2026-W39")
 
     def test_sin_cambios_no_avisa(self):
@@ -131,30 +133,69 @@ class EvaluarTest(unittest.TestCase):
     def test_ficaya_no_se_confunde_con_fica(self):
         engañosa = Carrera("FICAYA", "Software Agroindustrial", "Presencial", "A")
         _, mensajes = self.evaluar(self.estado_inicial(), CARRERAS_ACTUALES + [engañosa])
-        self.assertEqual(mensajes, [])
+        [mensaje] = mensajes  # solo el aviso normal de cambios, no la alerta urgente
+        self.assertEqual(mensaje.titulo, "📋 Nuevas carreras habilitadas: FICAYA")
+        self.assertEqual(mensaje.prioridad, 3)
 
     def test_aviso_urgente_cuando_se_habilita(self):
         estado, mensajes = self.evaluar(self.estado_inicial(), CARRERAS_ACTUALES + [SOFTWARE])
-        [mensaje] = mensajes  # sin un aviso duplicado de "cambios en FICA"
+        [mensaje] = mensajes  # sin un aviso de cambios duplicado
         self.assertEqual(mensaje.prioridad, 5)
         self.assertIn("Software (FICA) ya está habilitada", mensaje.titulo)
-        self.assertIn("Software (Rediseño) — Presencial, estado A", mensaje.texto)
+        self.assertIn("• Software (Rediseño) · Presencial", mensaje.texto)
 
         _, mensajes = self.evaluar(estado, CARRERAS_ACTUALES + [SOFTWARE])
         self.assertEqual(mensajes, [], "no debe repetir el aviso")
 
     def test_ignora_mayusculas_tildes_y_espacios(self):
         carrera = Carrera(" fica ", "INGENIERÍA DE  SOFTWARE", "En Línea", "A")
-        _, mensajes = self.evaluar(self.estado_inicial(), [carrera], carrera="Ingenieria de software")
+        _, mensajes = self.evaluar(
+            self.estado_inicial(), CARRERAS_ACTUALES + [carrera], carrera="Ingenieria de software"
+        )
         self.assertEqual([m.prioridad for m in mensajes], [5])
 
-    def test_avisa_otras_carreras_de_la_facultad(self):
+    def test_avisa_con_prioridad_alta_otras_carreras_de_la_facultad(self):
         electricidad = Carrera("FICA", "Electricidad", "Presencial", "A")
         _, mensajes = self.evaluar(self.estado_inicial(), CARRERAS_ACTUALES + [electricidad])
         [mensaje] = mensajes
-        self.assertEqual(mensaje.titulo, "Cambios en las carreras de FICA")
+        self.assertEqual(mensaje.titulo, "📋 Nuevas carreras habilitadas: FICA")
         self.assertEqual(mensaje.prioridad, 4)
-        self.assertIn("Nuevas:\n• Electricidad", mensaje.texto)
+        self.assertTrue(mensaje.texto.startswith("Nuevas:\nFICA (1)\n• Electricidad · Presencial"))
+        self.assertIn("Habilitadas ahora (21):", mensaje.texto)
+
+    def test_avisa_cambios_de_otras_facultades_agrupados(self):
+        fecyt = [
+            Carrera("FECYT", "Educación Básica", "Presencial", "A"),
+            Carrera("FECYT", "Diseño Grafico (Rediseño)", "Presencial", "A"),
+        ]
+        estado, mensajes = self.evaluar(self.estado_inicial(), CARRERAS_ACTUALES + fecyt)
+        [mensaje] = mensajes
+        self.assertEqual(mensaje.titulo, "📋 Nuevas carreras habilitadas: FECYT")
+        self.assertEqual(mensaje.prioridad, 3)
+        self.assertIn("Nuevas:\nFECYT (2)\n• Diseño Grafico (Rediseño) · Presencial\n• Educación Básica", mensaje.texto)
+        self.assertIn("Habilitadas ahora (22):\n\nFACAE (13)", mensaje.texto)
+
+        _, mensajes = self.evaluar(estado, CARRERAS_ACTUALES)
+        [mensaje] = mensajes
+        self.assertEqual(mensaje.titulo, "📋 Cambios en carreras habilitadas: FECYT")
+        self.assertIn("Ya no aparecen:\nFECYT (2)", mensaje.texto)
+
+    def test_estado_de_version_anterior_envia_la_lista_actual(self):
+        anterior = {"objetivo": [], "facultad": [], "semana_resumen": "2026-W39"}
+        estado, mensajes = self.evaluar(anterior, CARRERAS_ACTUALES)
+        [mensaje] = mensajes
+        self.assertEqual(mensaje.titulo, "📋 Carreras habilitadas")
+        self.assertTrue(mensaje.texto.startswith("Habilitadas ahora (20):\n\nFACAE (13)"))
+        self.assertNotIn("facultad", estado)
+
+        _, mensajes = self.evaluar(estado, CARRERAS_ACTUALES)
+        self.assertEqual(mensajes, [])
+
+    def test_lista_que_no_cabe_se_resume_por_facultad(self):
+        muchas = [Carrera(f"FAC{i % 5}", f"Carrera con un nombre bastante largo número {i}", "Presencial", "A") for i in range(120)]
+        _, [mensaje] = self.evaluar({}, muchas)
+        self.assertLessEqual(len(mensaje.texto.encode()), monitor.LIMITE_NTFY)
+        self.assertIn("Habilitadas ahora: 120 (FAC0: 24, FAC1: 24", mensaje.texto)
 
     def test_avisa_cuando_deja_de_aparecer(self):
         abierta, _ = self.evaluar(self.estado_inicial(), CARRERAS_ACTUALES + [SOFTWARE])
@@ -173,6 +214,7 @@ class EvaluarTest(unittest.TestCase):
         estado, mensajes = self.evaluar(estado, CARRERAS_ACTUALES, ahora=lunes)
         [mensaje] = mensajes
         self.assertIn("Sigo vigilando", mensaje.titulo)
+        self.assertIn("Habilitadas ahora (20):", mensaje.texto)
         self.assertEqual(estado["semana_resumen"], "2026-W40")
 
 
@@ -181,12 +223,18 @@ class ListarTest(unittest.TestCase):
         texto = monitor.listar_por_facultad(CARRERAS_ACTUALES + [SOFTWARE])
         grupos = texto.split("\n\n")
         self.assertEqual([g.splitlines()[0] for g in grupos], ["FACAE (13)", "FICA (1)", "FICAYA (7)"])
-        self.assertIn("• Software (Rediseño) — Presencial, estado A", grupos[1])
+        self.assertIn("• Software (Rediseño) · Presencial", grupos[1])
+
+    def test_muestra_el_estado_solo_si_no_es_el_habitual(self):
+        self.assertEqual(SOFTWARE.describir(), "• Software (Rediseño) · Presencial")
+        self.assertEqual(
+            Carrera("FICA", "Software", "Presencial", "I").describir(), "• Software · Presencial · estado I"
+        )
 
 
 class FallosTest(unittest.TestCase):
     def test_avisa_una_vez_tras_varios_fallos_y_luego_la_recuperacion(self):
-        estado = {"objetivo": [], "facultad": [], "semana_resumen": "2026-W39"}
+        estado, _ = monitor.evaluar({}, CARRERAS_ACTUALES, "FICA", "Software", JUEVES, URL)
         avisos = []
         for _ in range(monitor.UMBRAL_FALLOS + 2):
             estado, mensajes = monitor.registrar_fallo(estado, "Timeout", URL)
@@ -211,6 +259,14 @@ class NotificacionesTest(unittest.TestCase):
             post.call_args.kwargs["json"],
             {"topic": "mi-topic", "title": "Título", "message": "Texto", "priority": 5, "click": URL},
         )
+
+    def test_ntfy_recorta_mensajes_demasiado_largos(self):
+        with mock.patch.object(monitor.requests, "post") as post:
+            post.return_value.ok = True
+            monitor.enviar_ntfy(Mensaje("T", "ñ" * 5000), "https://ntfy.sh", "mi-topic", URL)
+        enviado = post.call_args.kwargs["json"]["message"]
+        self.assertLessEqual(len(enviado.encode()), monitor.LIMITE_NTFY)
+        self.assertTrue(enviado.endswith("\n…"))
 
     def test_error_de_conexion_se_reporta_como_error_de_notificacion(self):
         with mock.patch.object(monitor.requests, "post", side_effect=requests.ConnectionError("sin red")):
