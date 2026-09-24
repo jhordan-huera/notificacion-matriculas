@@ -1,7 +1,158 @@
 {
   "alerta_error_enviada": false,
-  "facultad": [],
   "fallos_consecutivos": 0,
+  "habilitadas": [
+    [
+      "FACAE",
+      "Administración de Empresas (Rediseño)",
+      "Presencial",
+      "A"
+    ],
+    [
+      "FACAE",
+      "Contabilidad y Auditoria (Rediseño)",
+      "Presencial",
+      "A"
+    ],
+    [
+      "FACAE",
+      "Contabilidad y Auditoria (Rediseño)",
+      "Semipresencial",
+      "A"
+    ],
+    [
+      "FACAE",
+      "Criminología y Ciencias Forenses",
+      "Presencial",
+      "A"
+    ],
+    [
+      "FACAE",
+      "Derecho (Rediseño)",
+      "Presencial",
+      "A"
+    ],
+    [
+      "FACAE",
+      "Derecho - En Línea",
+      "En Línea",
+      "A"
+    ],
+    [
+      "FACAE",
+      "Economía (Rediseño)",
+      "Presencial",
+      "A"
+    ],
+    [
+      "FACAE",
+      "Economía - En Línea",
+      "En Línea",
+      "A"
+    ],
+    [
+      "FACAE",
+      "Gastronomía (Rediseño)",
+      "Presencial",
+      "A"
+    ],
+    [
+      "FACAE",
+      "Mercadotecnia (Rediseño)",
+      "Presencial",
+      "A"
+    ],
+    [
+      "FACAE",
+      "Negocios Digitales",
+      "Presencial",
+      "A"
+    ],
+    [
+      "FACAE",
+      "Turismo (Rediseño)",
+      "Presencial",
+      "A"
+    ],
+    [
+      "FACAE",
+      "Turismo - En Línea",
+      "En Línea",
+      "A"
+    ],
+    [
+      "FECYT",
+      "Comunicación - En Línea",
+      "En Línea",
+      "A"
+    ],
+    [
+      "FECYT",
+      "Diseño Grafico (Rediseño)",
+      "Presencial",
+      "A"
+    ],
+    [
+      "FECYT",
+      "Educación Básica",
+      "Presencial",
+      "A"
+    ],
+    [
+      "FECYT",
+      "Educación Básica - En Línea",
+      "En Línea",
+      "A"
+    ],
+    [
+      "FECYT",
+      "Pedagogía de los Idiomas Nacionales y Extranjeros - En Línea",
+      "En Línea",
+      "A"
+    ],
+    [
+      "FICAYA",
+      "Agroindustria",
+      "Presencial",
+      "A"
+    ],
+    [
+      "FICAYA",
+      "Agropecuaria",
+      "Presencial",
+      "A"
+    ],
+    [
+      "FICAYA",
+      "Biotecnología (Rediseño)",
+      "Presencial",
+      "A"
+    ],
+    [
+      "FICAYA",
+      "Ingeniería Ambiental",
+      "Presencial",
+      "A"
+    ],
+    [
+      "FICAYA",
+      "Ingeniería Forestal",
+      "Presencial",
+      "A"
+    ],
+    [
+      "FICAYA",
+      "Ingeniería en Energías Renovables (Rediseño)",
+      "Presencial",
+      "A"
+    ],
+    [
+      "FICAYA",
+      "Recursos Naturales Renovables (Rediseño)",
+      "Presencial",
+      "A"
+    ]
+  ],
   "objetivo": [],
   "semana_resumen": "2026-W39"
 }
