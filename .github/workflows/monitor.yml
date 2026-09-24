@@ -1,0 +1,44 @@
+name: Monitor de matrículas
+
+on:
+  schedule:
+    - cron: "*/15 * * * *" # GitHub puede retrasar las ejecuciones programadas unos minutos
+  workflow_dispatch:
+
+permissions:
+  contents: write # para guardar estado.json en el repositorio
+
+concurrency:
+  group: monitor-matriculas
+  cancel-in-progress: false
+
+jobs:
+  revisar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Revisar carreras habilitadas
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          FACULTAD: ${{ vars.FACULTAD }}
+          CARRERA: ${{ vars.CARRERA }}
+        run: python monitor.py
+
+      - name: Guardar estado
+        run: |
+          if [ -n "$(git status --porcelain estado.json)" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add estado.json
+            git commit -m "Actualizar estado del monitor"
+            git push
+          fi
