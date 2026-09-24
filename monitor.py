@@ -448,14 +448,19 @@ def cambios_historial(estado: dict, nuevo_estado: dict, ahora: datetime) -> list
 
 
 def guardar_historial(ruta: Path, filas: list[dict[str, str]]) -> None:
+    """Agrega las filas al inicio, para que el historial vaya del cambio más reciente al más antiguo."""
     if not filas:
         return
-    nuevo = not ruta.exists() or ruta.stat().st_size == 0
-    with ruta.open("a", encoding="utf-8", newline="") as archivo:
+    anteriores = []
+    if ruta.exists():
+        with ruta.open(encoding="utf-8", newline="") as archivo:
+            anteriores = list(csv.DictReader(archivo))
+    temporal = ruta.with_name(ruta.name + ".tmp")
+    with temporal.open("w", encoding="utf-8", newline="") as archivo:
         escritor = csv.DictWriter(archivo, fieldnames=CAMPOS_HISTORIAL)
-        if nuevo:
-            escritor.writeheader()
-        escritor.writerows(filas)
+        escritor.writeheader()
+        escritor.writerows(filas + anteriores)
+    temporal.replace(ruta)  # reemplazo atómico: nunca queda un historial a medio escribir
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -205,7 +205,9 @@
       $("estado").dataset.abierta = abierta;
       $("respuesta").textContent = abierta ? "¡Sí, ya está habilitada! 🎉" : "Todavía no";
       if (abierta) {
-        const apertura = historial.find((f) => f.evento === "habilitada" && esObjetivo(f.facultad, f.carrera));
+        const apertura = historial
+          .filter((f) => f.evento === "habilitada" && esObjetivo(f.facultad, f.carrera))
+          .sort((a, b) => b.detectado.localeCompare(a.detectado))[0];
         const desde = apertura ? ` Detectada el ${apertura.detectado}.` : "";
         $("detalle").textContent = objetivo.map(([, carrera, modalidad]) => `${carrera} · ${modalidad}`).join(", ") + "." + desde;
       } else {
@@ -250,7 +252,9 @@
       const contenedor = $("historial");
       contenedor.replaceChildren();
       const iniciales = historial.filter((f) => f.evento === "ya habilitada");
-      const eventos = historial.filter((f) => f.evento !== "ya habilitada").reverse();
+      const eventos = historial
+        .filter((f) => f.evento !== "ya habilitada")
+        .sort((a, b) => b.detectado.localeCompare(a.detectado)); // lo más reciente primero
       const formatoDia = new Intl.DateTimeFormat("es-EC", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" });
       let diaActual = null, tarjeta = null;
       for (const fila of eventos) {

@@ -350,19 +350,25 @@ class HistorialTest(unittest.TestCase):
         self.assertEqual(monitor.cambios_historial(antes, despues, JUEVES), [])
         self.assertEqual(monitor.cambios_historial({}, monitor.registrar_fallo({}, "Timeout", URL)[0], JUEVES), [])
 
-    def test_escribe_el_encabezado_una_sola_vez(self):
+    def test_lo_mas_reciente_queda_arriba(self):
+        def fila(hora, carrera):
+            return {"detectado": f"2026-09-24 {hora}", "evento": "habilitada", "facultad": "FICA",
+                    "carrera": carrera, "modalidad": "Presencial"}
+
         with tempfile.TemporaryDirectory() as directorio:
             ruta = Path(directorio) / "historial.csv"
-            fila = {"detectado": "2026-09-24 15:35", "evento": "habilitada", "facultad": "FICA",
-                    "carrera": "Electricidad", "modalidad": "Presencial"}
-            monitor.guardar_historial(ruta, [fila])
+            monitor.guardar_historial(ruta, [fila("15:35", "Ingeniería Automotriz")])
             monitor.guardar_historial(ruta, [])
-            monitor.guardar_historial(ruta, [fila])
+            monitor.guardar_historial(ruta, [fila("16:41", "Mecatrónica, Rediseño")])
             self.assertEqual(
                 ruta.read_text(encoding="utf-8").splitlines(),
-                ["detectado,evento,facultad,carrera,modalidad"]
-                + ["2026-09-24 15:35,habilitada,FICA,Electricidad,Presencial"] * 2,
+                [
+                    "detectado,evento,facultad,carrera,modalidad",
+                    '2026-09-24 16:41,habilitada,FICA,"Mecatrónica, Rediseño",Presencial',
+                    "2026-09-24 15:35,habilitada,FICA,Ingeniería Automotriz,Presencial",
+                ],
             )
+            self.assertEqual([p.name for p in Path(directorio).iterdir()], ["historial.csv"])
 
 
 class MainTest(unittest.TestCase):
