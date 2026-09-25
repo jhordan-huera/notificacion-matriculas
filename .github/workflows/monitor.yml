@@ -18,6 +18,10 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
+        with:
+          # La punta de main al arrancar, no el commit del momento del disparo: si la revisión
+          # anterior tardó más de un minuto, así se parte del estado que ella guardó.
+          ref: main
 
       - uses: actions/setup-python@v6
         with:

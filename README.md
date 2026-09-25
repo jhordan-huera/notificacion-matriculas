@@ -32,7 +32,7 @@ el último estado guardado en `estado.json` y te avisa por [ntfy](https://ntfy.s
 | Revisión | Frecuencia | Depende de |
 |---|---|---|
 | [cron-job.org](https://console.cron-job.org) lanza el workflow de GitHub por la API | cada minuto | nada: funciona con la Mac apagada |
-| Servicio de macOS (`launchd`) | cada minuto | que la Mac esté encendida |
+| Servicio de macOS (`launchd`), opcional y hoy apagado | cada minuto | que la Mac esté encendida |
 | Horario propio de GitHub (`schedule`) | cada 5 minutos | GitHub, que a menudo lo retrasa o se lo salta |
 
 Antes de enviar un aviso, cada revisión consulta los avisos recientes del canal de ntfy. Si otra

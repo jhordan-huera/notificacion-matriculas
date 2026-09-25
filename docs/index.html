@@ -149,7 +149,7 @@
     const USUARIO = enPages ? location.hostname.split(".")[0] : "jhordan-huera";
     const REPOSITORIO = enPages ? location.pathname.split("/")[1] : "notificacion-matriculas";
     const RAW = `https://raw.githubusercontent.com/${USUARIO}/${REPOSITORIO}/main`;
-    const API = `https://api.github.com/repos/${USUARIO}/${REPOSITORIO}/actions/workflows/monitor.yml/runs?per_page=1&status=completed`;
+    const API = `https://api.github.com/repos/${USUARIO}/${REPOSITORIO}/actions/workflows/monitor.yml/runs?per_page=10&status=completed`;
 
     const $ = (id) => document.getElementById(id);
     const normalizar = (texto) =>
@@ -285,7 +285,10 @@
       try {
         const respuesta = await fetch(API, { headers: { Accept: "application/vnd.github+json" } });
         if (!respuesta.ok) throw new Error(respuesta.status);
-        const [ejecucion] = (await respuesta.json()).workflow_runs;
+        // Las revisiones canceladas (en cola cuando otra tardó) no son fallas: se ignoran.
+        const ejecucion = (await respuesta.json()).workflow_runs.find(
+          (e) => !["cancelled", "skipped"].includes(e.conclusion)
+        );
         if (!ejecucion) throw new Error("sin ejecuciones");
         const fecha = new Date(ejecucion.updated_at);
         const ok = ejecucion.conclusion === "success";

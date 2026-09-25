@@ -85,8 +85,9 @@ def leer_tabla(soup: BeautifulSoup) -> list[Carrera]:
     """Extrae las filas del Interactive Report, ubicando las columnas por su encabezado."""
     tabla = soup.find("table", class_="a-IRR-table")
     if tabla is None:
-        # Sin tabla, APEX muestra un mensaje cuando no hay filas para mostrar.
-        if soup.find(class_=["a-IRR-noDataMsg", "a-IRR-message"]):
+        # Solo el mensaje de "sin datos" significa lista vacía; cualquier otro caso (por
+        # ejemplo un error de APEX) se trata como falla, no como "se retiraron todas".
+        if soup.find(class_="a-IRR-noDataMsg"):
             return []
         raise ErrorPagina("La página cambió: no se encontró la tabla de carreras")
 
@@ -149,7 +150,10 @@ def obtener_carreras(url: str, sesion: requests.Session | None = None) -> list[C
 
     config = _config_reporte(soup)
     region = config["regionId"]
-    filas_por_pagina = int(_valor(soup, f"{region}_row_select"))
+    try:
+        filas_por_pagina = int(_valor(soup, f"{region}_row_select"))
+    except ValueError:
+        raise ErrorPagina("La página cambió: el tamaño de página del reporte no es un número") from None
     base = soup.find("base")
     url_ajax = urljoin(urljoin(url, base["href"] if base else "/ords/"), "wwv_flow.ajax")
     datos = {
@@ -176,6 +180,9 @@ def obtener_carreras(url: str, sesion: requests.Session | None = None) -> list[C
         soup_pagina = BeautifulSoup(respuesta.text, "html.parser")
         if soup_pagina.find(id=f"{region}_content") is None:
             raise ErrorPagina("Respuesta inesperada al pedir la siguiente página del reporte")
+        if soup_pagina.find("table", class_="a-IRR-table") is None and soup_pagina.find(class_="a-IRR-message"):
+            # APEX responde "Invalid set of rows requested" cuando la página anterior era la última.
+            return carreras
         pagina = leer_tabla(soup_pagina)
         carreras += pagina
     raise ErrorPagina(f"El reporte tiene más de {MAX_PAGINAS} páginas")

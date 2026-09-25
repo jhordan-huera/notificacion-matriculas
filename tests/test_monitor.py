@@ -75,8 +75,14 @@ class LeerTablaTest(unittest.TestCase):
         )
         self.assertEqual({c.facultad for c in CARRERAS_ACTUALES}, {"FACAE", "FICAYA"})
 
-    def test_pagina_sin_filas_devuelve_lista_vacia(self):
-        self.assertEqual(monitor.leer_tabla(sopa(fixture("pagina_sin_filas.html"))), [])
+    def test_mensaje_sin_datos_devuelve_lista_vacia(self):
+        html = '<div class="a-IRR-noDataMsg"><span class="a-IRR-noDataMsg-text">No data found.</span></div>'
+        self.assertEqual(monitor.leer_tabla(sopa(html)), [])
+
+    def test_mensaje_de_error_de_apex_no_se_toma_como_lista_vacia(self):
+        # Si se tomara como vacía, el monitor avisaría que se retiraron todas las carreras.
+        with self.assertRaises(monitor.ErrorPagina):
+            monitor.leer_tabla(sopa(fixture("pagina_sin_filas.html")))
 
     def test_estructura_desconocida_es_error(self):
         with self.assertRaises(monitor.ErrorPagina):
@@ -107,6 +113,23 @@ class ObtenerCarrerasTest(unittest.TestCase):
         self.assertEqual(datos["x01"], "16424676081106468")
         self.assertEqual(datos["x02"], "16777529469264832")
         self.assertTrue(datos["p_request"].startswith("PLUGIN=UkVHSU9OIFRZUEV-"))
+
+    def login_con_filas_por_pagina(self, valor: str) -> str:
+        return fixture("login.html").replace(
+            'id="R16424608761106467_row_select" value="50"', f'id="R16424608761106467_row_select" value="{valor}"'
+        )
+
+    def test_termina_cuando_apex_dice_que_no_hay_mas_filas(self):
+        # Con exactamente 20 carreras y páginas de 20, la siguiente página responde
+        # "Invalid set of rows requested".
+        sesion = SesionFalsa(self.login_con_filas_por_pagina("20"), [fixture("pagina_sin_filas.html")])
+        self.assertEqual(monitor.obtener_carreras(URL, sesion), CARRERAS_ACTUALES)
+        self.assertEqual(len(sesion.posts), 1)
+
+    def test_tamano_de_pagina_no_numerico_es_error_de_pagina(self):
+        sesion = SesionFalsa(self.login_con_filas_por_pagina("ALL"), [])
+        with self.assertRaises(monitor.ErrorPagina):
+            monitor.obtener_carreras(URL, sesion)
 
 
 class EvaluarTest(unittest.TestCase):
