@@ -1,6 +1,6 @@
 {
-  "alerta_error_enviada": true,
-  "fallos_consecutivos": 3,
+  "alerta_error_enviada": false,
+  "fallos_consecutivos": 0,
   "habilitadas": [
     [
       "FACAE",
