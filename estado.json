@@ -256,12 +256,6 @@
     ],
     [
       "FICA",
-      "Software",
-      "Presencial",
-      "A"
-    ],
-    [
-      "FICA",
       "Tecnologías de la Información - En Línea",
       "En Línea",
       "A"
@@ -287,12 +281,6 @@
     [
       "FICAYA",
       "Agropecuaria",
-      "Presencial",
-      "A"
-    ],
-    [
-      "FICAYA",
-      "Biotecnología (Rediseño)",
       "Presencial",
       "A"
     ],
@@ -327,13 +315,6 @@
       "A"
     ]
   ],
-  "objetivo": [
-    [
-      "FICA",
-      "Software",
-      "Presencial",
-      "A"
-    ]
-  ],
+  "objetivo": [],
   "semana_resumen": "2026-W40"
 }
