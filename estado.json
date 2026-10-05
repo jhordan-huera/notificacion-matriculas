@@ -232,12 +232,6 @@
     ],
     [
       "FICA",
-      "Electricidad",
-      "Presencial",
-      "A"
-    ],
-    [
-      "FICA",
       "Ingeniería Automotriz",
       "Presencial",
       "A"
@@ -335,5 +329,5 @@
       "A"
     ]
   ],
-  "semana_resumen": "2026-W40"
+  "semana_resumen": "2026-W41"
 }
