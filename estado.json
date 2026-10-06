@@ -232,6 +232,12 @@
     ],
     [
       "FICA",
+      "Electricidad",
+      "Presencial",
+      "A"
+    ],
+    [
+      "FICA",
       "Ingeniería Automotriz",
       "Presencial",
       "A"
@@ -263,12 +269,6 @@
     [
       "FICA",
       "Telecomunicaciones",
-      "Presencial",
-      "A"
-    ],
-    [
-      "FICA",
-      "Textiles",
       "Presencial",
       "A"
     ],
